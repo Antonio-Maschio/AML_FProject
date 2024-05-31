@@ -1,34 +1,11 @@
 #### Imports ####
 import numpy as np
-import matplotlib.pyplot as plt
-from tqdm import tqdm
-from matplotlib.pyplot import imshow, show, subplot,title,axis
-from matplotlib.patches import Circle
-from skimage.io import imread
-import skimage.util
-import skimage as sk
-from timeit import timeit
-from skimage.feature import corner_peaks,peak_local_max
-import matplotlib.patches as patches
 from matplotlib.colors import LinearSegmentedColormap
 import os
-from skimage import exposure, filters, morphology
-from cellpose import models, io, denoise, utils
-from cellpose.io import imread, logger_setup
-import pandas as pd
-from skimage.measure import regionprops, label, regionprops_table
-from skimage.feature import blob_log
-from skimage.exposure import rescale_intensity
-from skimage import transform
-from skimage.draw import polygon_perimeter
 from scipy.ndimage import binary_erosion
+from matplotlib.pyplot import imread
 
-import os
-
-# Add OpenMP runtime conflict resolution
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # Allow program to continue despite multiple OpenMP runtimes
-os.environ["OMP_NUM_THREADS"] = "1"  # Limit OpenMP threads to one to avoid conflicts
-
+#### Functions ####
 def compute_cdf(histogram):
     # Compute the cumulative sum of the histogram
     cumulative_histogram = np.cumsum(histogram)
