@@ -1,0 +1,108 @@
+List of properties:
+
+1. category (custom): 
+    control (0) or penetramax (1). 
+2. area (regionprops, nucleus): 
+    area of nucleus.
+2.1. area (regionprops, cell): 
+    area of cell.
+3. area_bbox (regionprops, nucleus):
+    area of nucleus bounding box.
+3.1. area_bbox (regionprops, cell):
+    area of cell bounding box.
+4. area_convex (regionprops, nucleus):
+    area of nucleus-equivalent polygon.
+4.1. area_convex (regionprops, cell):
+    area of cell-equivalent polygon.
+5. axis_major_length (regionprops):
+    equivalent semi-major axis of nucleus.
+6. axis_minor_length (regionprops):
+    equivalent semi-minor axis of nucleus.
+7. eccentricity (regionprops):
+    equivalent eccentricity of nucleus.
+8. equivalent_diameter_area (regionprops, nucleus):
+    diameter of circle with the same area as the nucleus.
+8.1. equivalent_diameter_area (regionprops, cell):
+    diameter of circle with the same area as the cell.
+9. feret_diameter_max (regionprops, nucleus):
+    maximum Feret diameter of the nucleus.
+9.1. feret_diameter_max (regionprops, cell):
+    maximum Feret diameter of the cell.
+10. intensity_max (regionprops):
+    maximum intensity (R) of the nucleus.
+11. intensity_min (regionprops):
+    minimum intensity (R) of the nucleus.
+12. intensity_std (regionprops):
+    standard deviation in intensity (R) of the nucleus. 
+13. solidity (regionprops, nucleus):
+    area / area_convex of the nucleus.
+13.1 solidity (regionprops, cell):
+    area / area_convex of the cell. 
+14. orientation (regionprops, nucleus):
+    angular orientation of the nucleus.
+14.1 orientation (regionprops, cell):
+    angular orientation of the cell. 
+15. energy (custom):
+    sum of squared intensities (R) of the nucleus.
+16. N_objects (custom, skimage.measure.label):
+    return number of connected objects in the binary image of the nucleus. 
+17. perimeter (regionprops, nucleus):
+    perimeter of the nucleus. 
+17.1 perimeter (regionprops, cell):
+    perimeter of the cell. 
+18. euler_number (custom, skimage.measure.euler_number):
+    number of objects minus the number of holes. 
+19. N_holes (custom):
+    N_objects - euler_number
+20. shannon_entropy (custom, skimage.measure.shannon_entropy):
+    Shannon entropy of the intensity (R). 
+21. total_area_of_holes (custom):
+    total area of holes in the binary image of the nucleus. 
+
+Haralick properties:
+1. h0 (haralick):
+    angular second momentum of the intensity (R). 
+2. h1 (haralick):
+    contrast of the intensity (R). 
+3. h2 (haralick):
+    correlation of the intensity(R). 
+4. h3 (haralick):
+    sum of squares (variance). 
+5. h4 (haralick):
+    inverse difference moment of the intensity (R). 
+6. h5 (haralick):
+    sum of average.
+7. h6 (haralick):
+    sum of variance. 
+8. h7 (haralick):
+    sum of entropy.
+9. h8 (haralick):
+    entropy. 
+10. h9 (haralick):
+    difference in variance. 
+11. h10 (haralick):
+    difference in entropy. 
+12. h11 (haralick):
+    information measure of correlation 1 (IMC1). 
+13. h12 (haralick):
+    information measure of correlation 2 (IMC2). 
+
+Fully custom properties:
+1. roundness (custom, nucleus):
+    area_nucleus / 4 * pi * perimeter_nucleus
+1.1 roundness (custom, cell):
+    area_cell / 4 * pi * perimeter_cell
+2. nucleus_fraction(custom):
+    area_nucleus / area_cell
+3. segment_order (custom):
+    order of the segmentation (what is the mask value).
+4. nearest (custom, nucleus):
+    distance to nearest nucleus / equivalent_diameter_area_nucleus
+4.1. nearest (custom, cell):
+    distance to nearest cell / equivalent_diameter_area_cell
+5. edge_flux (custom):
+    mean intensity after binary erosion divided by the initial mean intensity. 
+6. Rq_X (custom, X=[0.02, 0.05, 0.25, 0.5, 0.75, 0.95, 0.98]):
+    Xth percentile of nucleus intensity (R). 
+6.1. Bq_X (custom, X=[0.02, 0.05, 0.25, 0.5, 0.75, 0.95, 0.98]):
+    Xth percentile of nucleus intensity (B). 
