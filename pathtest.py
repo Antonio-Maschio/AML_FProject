@@ -96,17 +96,53 @@ def main_pathAnalysis(grid):
     end = (0, len(grid[0]) // 2)
 
     # Adjust start position if it initially points to a cell with 0
-    if grid[start[0]][start[1]] == 0:
-        guard = True
-        while guard:
-            start = (start[0] - 1, start[1])
-            if start[0] < 0 or grid[start[0]][start[1]] == 1:
-                guard = False
-        if start[0] < 0:
-            raise ValueError("No valid start position found")
+    def find_valid_positions(grid, start, end):
+        # Check and adjust the start position
+        if grid[start[0]][start[1]] == 0:
+            guard = True
+            while guard:
+                start = (start[0] - 1, start[1])
+                if start[0] < 0 or grid[start[0]][start[1]] == 1:
+                    guard = False
+            if start[0] < 0:
+                raise ValueError("No valid start position found")
+            if grid[start[0]][start[1]] == 0:
+                raise ValueError("No valid start position found")
+
+        # Check and adjust the end position
+        if grid[end[0]][end[1]] == 0:
+            guard = True
+            while guard:
+                end = (end[0] + 1, end[1])
+                if end[0] >= len(grid) or grid[end[0]][end[1]] == 1:
+                    guard = False
+            if end[0] >= len(grid):
+                raise ValueError("No valid end position found")
+            if grid[end[0]][end[1]] == 0:
+                raise ValueError("No valid end position found")
+
+        return start, end
+    
+    start2,end2 = find_valid_positions(grid,start,end)
 
 
-    total_paths, path_lengths = count_paths_and_lengths(grid, start, end)
+    total_paths, path_lengths = count_paths_and_lengths(grid, start2, end2)
 
-    print(f"Total number of paths: {total_paths}")
-    print(f"Lengths of paths: {path_lengths}")
+    # if ()
+    # print(f"Total number of paths: {total_paths}")
+    # print(f"Lengths of paths: {path_lengths}")
+
+    return total_paths,path_lengths
+
+# test
+
+# grid_ = [
+# [1, 0, 1, 1, 1],
+# [1, 0, 1, 0, 1],
+# [1, 1, 1, 0, 1],
+# [0, 0, 1, 0, 1],
+# [1, 1, 1, 1, 1]
+# ]
+
+# result = main_pathAnalysis(grid_)
+# print(result)
