@@ -41,7 +41,7 @@ def ZtoRGB(channel, offset:int=1, min=None, max=None):
 
 class Segment:
     def __init__(self, cell_rp, nucleus_rp, segment_order:int=0, min=None, max=None):
-        from numpy import where, nan, quantile, clip, exp, pi
+        from numpy import where, nan, quantile, clip, exp, pi, uint8
         from mahotas.features import haralick
         from pathtest import main_pathAnalysis
         from Functions_George import detect_outline
@@ -65,8 +65,8 @@ class Segment:
 
         # Haralick features
 
-        self.haralickR = haralick(gaussian(ZtoRGB(self.nucleusR, min=min, max=max), preserve_range=True), ignore_zeros=True).mean(0)
-        self.haralickB = haralick(gaussian(ZtoRGB(self.nucleusB, min=min, max=max), preserve_range=True), ignore_zeros=True).mean(0)
+        self.haralickR = haralick(gaussian(ZtoRGB(self.nucleusR, min=min, max=max), preserve_range=True).astype(uint8), ignore_zeros=True).mean(0)
+        self.haralickB = haralick(gaussian(ZtoRGB(self.nucleusB, min=min, max=max), preserve_range=True).astype(uint8), ignore_zeros=True).mean(0)
 
         # Possible paths
 
