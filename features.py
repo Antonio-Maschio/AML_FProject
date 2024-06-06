@@ -1,3 +1,18 @@
+def nearest_neighbour(points):
+    from numpy import meshgrid
+
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+
+    xg1, xg2 = meshgrid(xs, xs, indexing='ij')
+    yg1, yg2 = meshgrid(ys, ys, indexing='ij')
+
+    dx2, dy2 = (xg1 - xg2)**2, (yg1 - yg2)**2
+    d = (dx2 + dy2)**0.5
+    d[d==0] = 1e8
+
+    return d.min(axis=1)
+
 ### Normalisations
 
 def normalise(arr):
@@ -50,6 +65,13 @@ class Segment:
         self.nucleus_rp = nucleus_rp
         self.segment_order = segment_order
 
+        # Centre and neighbour
+
+        self.x0, self.y0, self.x1, self.y1 = self.nucleus_rp.bbox
+        self.xc, self.yc = self.nucleus_rp.centroid_local[0] + self.x0, self.nucleus_rp.centroid_local[1] + self.y0
+        self.centre = (self.xc, self.yc)
+        self.nearest_neighbour = 0
+
         # Colour channels
         self.cellR = where(self.cell_rp.image, self.cell_rp.intensity_image[:,:,0], nan)
         self.cellB = where(self.cell_rp.image, self.cell_rp.intensity_image[:,:,2], nan)
@@ -74,10 +96,9 @@ class Segment:
         self.gaussian = lambda x, mu=128, sigma=25.4: exp(-(x - mu)**2 / (2 * sigma**2)) / (2 * pi * sigma**2)**0.5
         
 
-    def show_segments(self, crange=5):
+    def show_segments(self, vmin=0, vmax=255):
         from matplotlib.pyplot import subplots, tight_layout, show, colorbar
 
-        vmin, vmax = -crange, crange
         fig, axes = subplots(2, 2, figsize=(12,8), dpi=300)
         
         im = axes[0,0].imshow(self.cellR, origin='lower', extent=self.cell_rp.bbox, 
@@ -208,6 +229,8 @@ class Segment:
     def getLLH(self):
         from numpy import log, mean
         return -mean(log(self.gaussian(self.nucleusR[self.nucleus_rp.image])))
+    
+    def getNearestN(self): return self.nearest_neighbour / self.nucleus_rp.equivalent_diameter_area
 
 
     #def getTotalPaths(self): return self.paths[0]
@@ -251,8 +274,15 @@ class Masks:
         self.nucleus_regionprops = regionprops(self.nuclei, self.nucleus_images)
 
         self.segments = []
+        points = []
         for cell_rp, nucleus_rp in zip(self.cell_regionprops, self.nucleus_regionprops):
-            self.segments.append(Segment(cell_rp, nucleus_rp))
+            seg = Segment(cell_rp, nucleus_rp)
+            points.append(seg.centre)
+            self.segments.append(seg)
+
+        distances = nearest_neighbour(points)
+        for seg, d in zip(self.segments, distances):
+            seg.nearest_neighbour = d
 
     def getDataFrame(self):
         from pandas import DataFrame
