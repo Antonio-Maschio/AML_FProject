@@ -249,7 +249,7 @@ class Segment:
     
     ### Retrieving methods
 
-    def retrieveFeatureNames(self): return [func.split('get')[-1] for func in dir(self) if callable(getattr(self, func)) and func.startswith("get")]
+    def retrieveFeatureNames(self): return [func for func in dir(self) if callable(getattr(self, func)) and func.startswith("get")]
 
     def retrieveFeatures(self): return [getattr(self, func)() for func in self.retrieveFeatureNames()]
 
@@ -315,3 +315,80 @@ class Masks:
         df = df.from_dict(data)
         self.df = df
         return self.df
+
+###
+    
+def inverse_quantile(vals):
+    return vals.argsort() / vals.argsort().max()
+
+from sklearn.preprocessing import StandardScaler
+class Dataset:
+    def __init__(self, control_paths, penetramax_paths, scaler=StandardScaler):
+        from pandas import concat
+        from tqdm import tqdm
+
+        self.control_paths = control_paths
+        self.penetramax_paths = penetramax_paths
+
+        # Create list of Masks objects
+        print("Instantiating masks...")
+        self.masks = []
+        loop = tqdm(zip(self.control_paths + self.penetramax_paths, len(self.control_paths) * ['control'] + len(self.penetramax_paths) * ['penetramax']))
+        for fname, type in loop:
+            self.masks.append(Masks(fname.split('/')[-1], type=type))
+
+        # Combined feature dataframes from each object
+        print("Retrieving features...")
+        dfs = []
+        for mask in tqdm(self.masks):
+            dfs.append(mask.getDataFrame())
+        self.df = concat(dfs)
+        self.feature_names = self.masks[0].segments[0].retrieveFeatureNames()
+        self.feature_df = self.df[self.feature_names]
+
+        # X-matrices
+        self.X = self.feature_df.to_numpy()
+        self.scaler = scaler().fit(self.X)
+        self.X_scaled = self.scaler.transform(self.X)
+        self.y = self.df['label'].to_numpy()
+
+        self.X_reduced = None
+        self.X_control_reduced = None
+        self.X_penetramax_reduced = None
+
+    from sklearn.decomposition import PCA
+    def performDimReduction(self, n_components:int=3, Algo=PCA):
+        self.n_components = n_components
+        algo = Algo(n_components=self.n_components)
+
+        is_control = (self.y==0)
+        X_control = self.X[is_control,:]
+        X_penetramax = self.X[~is_control,:]
+
+        self.X_control_reduced = algo.fit_transform(X_control)
+        self.X_penetramax_reduced = algo.fit_transform(X_penetramax)
+        self.X_reduced = algo.fit_transform(self.X)
+
+    def makeKDE(self):
+        from scipy.stats import gaussian_kde
+        from numpy import append
+
+        if self.X_control_reduced is None:
+            print('Run dimensionality reduction first!..')
+            return
+        
+        if self.X_control_reduced.shape[0] == self.n_components: flip = lambda x: x
+        else: flip = lambda x: x.T
+
+        kde_control = gaussian_kde(flip(self.X_control_reduced))
+        kde_penetramax = gaussian_kde(flip(self.X_penetramax_reduced))
+
+        control_LLHs = inverse_quantile(kde_control.logpdf(flip(self.X_control_reduced)))
+        drug_LLHs = inverse_quantile(kde_penetramax.logpdf(flip(self.X_penetramax_reduced)))
+
+        self.df['Similarity'] = append(control_LLHs, drug_LLHs)
+
+    def makeSelection(self, q_control=0.05, q_drug=0.05):
+        condition = (self.df['label'] == 0) * (self.df['Similarity'] >= q_control) + (self.df['label'] == 1) * (self.df['Similarity'] >= q_drug)
+        df_reduced = self.df[condition]
+        return df_reduced[self.feature_names + ['label']]
