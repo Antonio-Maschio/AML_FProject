@@ -91,8 +91,9 @@ class Segment:
 
         #self.paths = main_pathAnalysis(self.binary_q50)
 
-        # Gaussian distribution
+        # Functions
 
+        self.quantile = quantile
         self.gaussian = lambda x, mu=128, sigma=25.4: exp(-(x - mu)**2 / (2 * sigma**2)) / (2 * pi * sigma**2)**0.5
         
 
@@ -232,13 +233,23 @@ class Segment:
     
     def getNearestN(self): return self.nearest_neighbour / self.nucleus_rp.equivalent_diameter_area
 
+    def getQ05(self): self.quantile(self.nucleusR[self.nucleus_rp.image], 0.05)
+
+    def getQ25(self): self.quantile(self.nucleusR[self.nucleus_rp.image], 0.25)
+
+    def getQ50(self): self.quantile(self.nucleusR[self.nucleus_rp.image], 0.50)
+
+    def getQ75(self): self.quantile(self.nucleusR[self.nucleus_rp.image], 0.75)
+
+    def getQ95(self): self.quantile(self.nucleusR[self.nucleus_rp.image], 0.95)
+
 
     #def getTotalPaths(self): return self.paths[0]
     #def getPathLength(self): return self.paths[1]
     
     ### Retrieving methods
 
-    def retrieveFeatureNames(self): return [func for func in dir(self) if callable(getattr(self, func)) and func.startswith("get")]
+    def retrieveFeatureNames(self): return [func.split('get')[-1] for func in dir(self) if callable(getattr(self, func)) and func.startswith("get")]
 
     def retrieveFeatures(self): return [getattr(self, func)() for func in self.retrieveFeatureNames()]
 
