@@ -56,7 +56,7 @@ def erodeNtimes(mask, N=1):
 
 class Segment:
     def __init__(self, cell_rp, nucleus_rp, segment_order:int=0):
-        from numpy import where, nan, quantile, clip, exp, pi
+        from numpy import where, nan, clip, exp, pi, quantile
         from mahotas.features import haralick
         from pathtest import main_pathAnalysis
         from Functions_George import detect_outline
@@ -233,15 +233,15 @@ class Segment:
     
     def getNearestN(self): return self.nearest_neighbour / self.nucleus_rp.equivalent_diameter_area
 
-    def getQ05(self): self.quantile(self.nucleusR[self.nucleus_rp.image], 0.05)
+    def getQ05(self): return self.quantile(self.nucleusR[self.nucleus_rp.image], 0.05)
 
-    def getQ25(self): self.quantile(self.nucleusR[self.nucleus_rp.image], 0.25)
+    def getQ25(self): return self.quantile(self.nucleusR[self.nucleus_rp.image], 0.25)
 
-    def getQ50(self): self.quantile(self.nucleusR[self.nucleus_rp.image], 0.50)
+    def getQ50(self): return self.quantile(self.nucleusR[self.nucleus_rp.image], 0.50)
 
-    def getQ75(self): self.quantile(self.nucleusR[self.nucleus_rp.image], 0.75)
+    def getQ75(self): return self.quantile(self.nucleusR[self.nucleus_rp.image], 0.75)
 
-    def getQ95(self): self.quantile(self.nucleusR[self.nucleus_rp.image], 0.95)
+    def getQ95(self): return self.quantile(self.nucleusR[self.nucleus_rp.image], 0.95)
 
 
     #def getTotalPaths(self): return self.paths[0]
