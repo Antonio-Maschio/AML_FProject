@@ -13,39 +13,38 @@ def quantile_normalisation(arr):
 
 ### Image Corrections
 
-def segmental_correction(image, masks, flux_normalisation=gaussian_normalisation):
+def ZtoRGB(channel):
+    from numpy import uint8, where, isfinite, maximum, minimum
+    y = maximum(minimum(channel, 5), -5)
+    return uint8(where(isfinite(channel), 1 + (255-1) * (y - (-5)) / (5 - (-5)), 0))
+
+from skimage.filters import gaussian
+def segmental_correction(image, masks, flux_normalisation=gaussian_normalisation, blur=gaussian):
     from liams_funcs import decompose_masks
-    from numpy import stack, nan, ones_like
+    from numpy import stack, nan, zeros_like, uint8
 
     R, G, B = image[:,:,0], image[:,:,1], image[:,:,2]
-    R1, G1 ,B1 = nan * ones_like(R), nan * ones_like(G), nan * ones_like(B)
+    R1, G1 ,B1 = zeros_like(R), zeros_like(G), zeros_like(B)
     for mask in decompose_masks(masks, reduce=False):
-        R1[mask] = flux_normalisation(R[mask])
-        G1[mask] = flux_normalisation(G[mask])
-        B1[mask] = flux_normalisation(B[mask])
+        R1[mask] = blur(ZtoRGB(flux_normalisation(R[mask])), preserve_range=True)
+        G1[mask] = blur(ZtoRGB(flux_normalisation(G[mask])), preserve_range=True)
+        B1[mask] = blur(ZtoRGB(flux_normalisation(B[mask])), preserve_range=True)
 
-    return stack([R1 ,G1, B1], axis=2)
+    return stack([R1, G1, B1], axis=2).astype(uint8)
 
 def erodeNtimes(mask, N=1):
     from skimage.morphology import binary_erosion
     if N == 1: return binary_erosion(mask)
     return erodeNtimes(binary_erosion(mask), N=N-1)
 
-def ZtoRGB(channel, offset:int=1, min=None, max=None):
-    from numpy import uint8, nanmax, nanmin, where, isfinite
-    if min is None: min = nanmin(channel)
-    if max is None: max = nanmax(channel)
-    return uint8(where(isfinite(channel), offset + (255-offset) * (channel - min) / (max - min), 0))
-
 ### Classes
 
 class Segment:
-    def __init__(self, cell_rp, nucleus_rp, segment_order:int=0, min=None, max=None):
-        from numpy import where, nan, quantile, clip, exp, pi, uint8
+    def __init__(self, cell_rp, nucleus_rp, segment_order:int=0):
+        from numpy import where, nan, quantile, clip, exp, pi
         from mahotas.features import haralick
         from pathtest import main_pathAnalysis
         from Functions_George import detect_outline
-        from skimage.filters import gaussian
 
         self.cell_rp = cell_rp
         self.nucleus_rp = nucleus_rp
@@ -58,15 +57,13 @@ class Segment:
         self.nucleusB = where(self.nucleus_rp.image, self.nucleus_rp.intensity_image[:,:,2], nan)
 
         # Binary channels
-        self.binary_z = lambda z: clip((gaussian(self.nucleusR) > z).astype(int) + detect_outline(self.nucleus_rp.image), 0, 1)
-        self.binary_q = lambda q: clip((gaussian(self.nucleusR) > quantile(self.nucleusR[self.nucleus_rp.image], q)).astype(int) + detect_outline(self.nucleus_rp.image), 0, 1)
-
+        self.binary_q = lambda q: clip((self.nucleusR > quantile(self.nucleusR[self.nucleus_rp.image], q)).astype(int) + detect_outline(self.nucleus_rp.image), 0, 1)
         self.binary_q50 = self.binary_q(0.5)
 
         # Haralick features
 
-        self.haralickR = haralick(gaussian(ZtoRGB(self.nucleusR, min=min, max=max), preserve_range=True).astype(uint8), ignore_zeros=True).mean(0)
-        self.haralickB = haralick(gaussian(ZtoRGB(self.nucleusB, min=min, max=max), preserve_range=True).astype(uint8), ignore_zeros=True).mean(0)
+        self.haralickR = haralick(self.nucleus_rp.intensity_image[:,:,0], ignore_zeros=True).mean(0)
+        self.haralickB = haralick(self.nucleus_rp.intensity_image[:,:,2], ignore_zeros=True).mean(0)
 
         # Possible paths
 
@@ -74,7 +71,7 @@ class Segment:
 
         # Gaussian distribution
 
-        self.gaussian = lambda z: exp(-z**2) / (2 * pi)**0.5
+        self.gaussian = lambda x, mu=128, sigma=25.4: exp(-(x - mu)**2 / (2 * sigma**2)) / (2 * pi * sigma**2)**0.5
         
 
     def show_segments(self, crange=5):
@@ -223,7 +220,7 @@ class Segment:
     def retrieveFeatures(self): return [getattr(self, func)() for func in self.retrieveFeatureNames()]
 
 class Masks:
-    def __init__(self, fname, type='control', flux_normalisation=gaussian_normalisation, min=None, max=None):
+    def __init__(self, fname, type='control', flux_normalisation=gaussian_normalisation):
         from cellpose.io import imread
         from numpy import load, arange, meshgrid
         from skimage.measure import regionprops
@@ -255,7 +252,7 @@ class Masks:
 
         self.segments = []
         for cell_rp, nucleus_rp in zip(self.cell_regionprops, self.nucleus_regionprops):
-            self.segments.append(Segment(cell_rp, nucleus_rp, min=min, max=max))
+            self.segments.append(Segment(cell_rp, nucleus_rp))
 
     def getDataFrame(self):
         from pandas import DataFrame
