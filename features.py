@@ -243,6 +243,10 @@ class Segment:
 
     def getQ95(self): return self.quantile(self.nucleusR[self.nucleus_rp.image], 0.95)
 
+    def getSymR(self): return abs(self.quantile(self.nucleusR[self.nucleus_rp.image], 0.5) - self.nucleusR[self.nucleus_rp.image].mean())
+
+    def getSymB(self): return abs(self.quantile(self.nucleusB[self.nucleus_rp.image], 0.5) - self.nucleusB[self.nucleus_rp.image].mean())
+
 
     #def getTotalPaths(self): return self.paths[0]
     #def getPathLength(self): return self.paths[1]
@@ -258,6 +262,7 @@ class Masks:
         from cellpose.io import imread
         from numpy import load, arange, meshgrid
         from skimage.measure import regionprops
+        from liams_funcs import get_mask_levels, get_generations
 
         self.type = type
         if self.type == 'control':
@@ -272,13 +277,12 @@ class Masks:
         data = load(mask_dir + fname + '.npy')
         self.cells, self.nuclei = data[:,:,0], data[:,:,1]
         self.mask_vals = arange(1, self.cells.max()+0.5)
+        self.levels = get_mask_levels(self.nuclei)
+        self.generations = get_generations(self.levels)
 
         # Correct images
         self.cell_images = segmental_correction(self.image, self.cells, flux_normalisation=flux_normalisation)
         self.nucleus_images = segmental_correction(self.image, self.nuclei, flux_normalisation=flux_normalisation)
-
-        # Pixel coordinates
-        self.xg, self.yg = meshgrid(arange(self.image.shape[0]), arange(self.image.shape[1]))
 
         # Genprops
         self.cell_regionprops = regionprops(self.cells, self.cell_images)
@@ -286,8 +290,8 @@ class Masks:
 
         self.segments = []
         points = []
-        for cell_rp, nucleus_rp in zip(self.cell_regionprops, self.nucleus_regionprops):
-            seg = Segment(cell_rp, nucleus_rp)
+        for cell_rp, nucleus_rp, generation in zip(self.cell_regionprops, self.nucleus_regionprops, self.generations):
+            seg = Segment(cell_rp, nucleus_rp, segment_order=generation)
             points.append(seg.centre)
             self.segments.append(seg)
 

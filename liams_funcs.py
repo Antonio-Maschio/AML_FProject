@@ -69,17 +69,25 @@ def remove_borders(bool_matrix, flexibility:int=5):
 
     return bool_matrix[x0:x1,y0:y1]
 
-def decompose_masks(masks, reduce:bool=True, flexibility=5):
-    from numpy import arange
-    labels = arange(1, int(masks.max()+1), 1)
+def get_mask_levels(masks, start:int=1):
+    from numpy import arange, array
+    return array([l for l in arange(start, masks.max()+1) if (masks == l).any()])
 
+def get_generations(levels):
+    from numpy import array
+    return array([l // 1000 for l in levels])
+
+def decompose_masks(masks, reduce:bool=True, flexibility=5, return_levels:bool=False):
+    levels = get_mask_levels(masks)
     result = []
-    for label in labels:
+    for l in levels:
         if reduce:
-            result.append(remove_borders(masks == label, flexibility=flexibility))
+            result.append(remove_borders(masks == l, flexibility=flexibility))
         else:
-            result.append(masks == label)
-        
+            result.append(masks == l)
+
+    if return_levels:
+        return result, levels
     return result
 
 def evaluate_roundness(mask):
