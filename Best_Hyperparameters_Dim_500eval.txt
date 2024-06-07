@@ -12,3 +12,5 @@
     "scale_pos_weight": 0.9187425668708892,
     "subsample": 0.49071455414629184
 }
+
+200 minutes
