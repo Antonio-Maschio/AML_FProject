@@ -110,7 +110,7 @@ def cell_nucleus_segmentation(image, cell_diam=100, nucleus_diam=80, threshold=0
     return unique_cell_masks, unique_nucleus_masks
 
 from liams_funcs import perform_adapthist_equalisation
-def combined_segmentation(fname, cell_diams=[100, 100], nucleus_diams=[80, 80], threshold=0, show=False, correction=perform_adapthist_equalisation, min_coverage=0.99, save_to=None):
+def combined_segmentation(fname, cell_diams=[100, 100], nucleus_diams=[80, 80], threshold=0, show_plot=False, correction=perform_adapthist_equalisation, min_coverage=0.99, save_to=None):
     from cellpose.io import imread
     from numpy import copy, stack, arange, meshgrid
     from matplotlib.pyplot import subplots, suptitle, tight_layout, savefig, show
@@ -120,7 +120,7 @@ def combined_segmentation(fname, cell_diams=[100, 100], nucleus_diams=[80, 80], 
     im = correction(copy(image))
     xx, yy = meshgrid(arange(image.shape[0]), arange(image.shape[1]))
 
-    if show:
+    if show_plot:
         fig, axes = subplots(min([len(cell_diams), len(nucleus_diams)]), 2, figsize=(8,4*min([len(cell_diams), len(nucleus_diams)])), dpi=300)
         suptitle(fname.split('/')[-1])
     
@@ -128,7 +128,7 @@ def combined_segmentation(fname, cell_diams=[100, 100], nucleus_diams=[80, 80], 
         cells, nuclei = cell_nucleus_segmentation(im, cell_diam=cell_diam, nucleus_diam=nucleus_diam, threshold=threshold, min_coverage=min_coverage)
         print(f"{cells.max()} new cell/nucleus pairs")
 
-        if show:
+        if show_plot:
             axes[i,0].imshow(im, origin='lower')
             axes[i,1].imshow(image, origin='lower')
 
@@ -148,7 +148,7 @@ def combined_segmentation(fname, cell_diams=[100, 100], nucleus_diams=[80, 80], 
 
         im = correction(stack(channels, axis=2))
 
-        if show:
+        if show_plot:
             axes[i,0].contour(xx, yy, cells, colors='fuchsia', levels=get_mask_levels(combined_cells, start=0), linewidths=0.3)
             axes[i,0].contour(xx, yy, nuclei, colors='gold', levels=get_mask_levels(combined_nuclei, start=0), linewidths=0.3)
             axes[i,1].contour(xx, yy, combined_cells, colors='fuchsia', levels=get_mask_levels(combined_cells, start=0), linewidths=0.3)
@@ -160,7 +160,7 @@ def combined_segmentation(fname, cell_diams=[100, 100], nucleus_diams=[80, 80], 
             axes[i,0].set_ylabel(f"{nuclei.max()} new masks")
             axes[i,0].set_title("Input image"); axes[i,1].set_title("Original image")
 
-    if show:
+    if show_plot:
         tight_layout()
         if save_to is not None:
             savefig(save_to, bbox_inches='tight', dpi=300)
