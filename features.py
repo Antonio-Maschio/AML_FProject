@@ -267,10 +267,10 @@ class Masks:
         self.type = type
         if self.type == 'control':
             image_dir = '../control_images/'
-            mask_dir = '../segments/control/'
+            mask_dir = 'segments/control/'
         else:
             image_dir = '../penetramax_images/'
-            mask_dir = '../segments/penetramax/'
+            mask_dir = 'segments/penetramax/'
 
         # Load image and its masks
         self.image = imread(image_dir + fname)
