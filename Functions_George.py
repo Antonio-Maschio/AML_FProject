@@ -130,3 +130,13 @@ def read_txt_file(file_path):
         content = file.read()
         int_list = [int(num) for num in content.split(',')]
         return int_list
+
+def remove_duplicates_and_sort(input_list):
+    seen = set()
+    result = []
+    for item in input_list:
+        if item not in seen:
+            result.append(item)
+            seen.add(item)
+    result.sort()
+    return result
