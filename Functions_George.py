@@ -140,3 +140,115 @@ def remove_duplicates_and_sort(input_list):
             seen.add(item)
     result.sort()
     return result
+
+import torch
+from torch import nn, optim
+import torch.nn.functional as F
+class VAE(nn.Module):
+    
+    def __init__(self, input_dim, hidden_dims, latent_dim, dropout_rate):
+        super(VAE, self).__init__()
+        
+        # Encoder
+        encoder_layers = []
+        prev_dim = input_dim
+        for dim in hidden_dims:
+            encoder_layers.append(nn.Linear(prev_dim, dim))
+            encoder_layers.append(nn.BatchNorm1d(dim))
+            encoder_layers.append(nn.LeakyReLU())
+            encoder_layers.append(nn.Dropout(dropout_rate))
+            prev_dim = dim
+        
+        self.encoder = nn.Sequential(*encoder_layers)
+        self.fc41 = nn.Linear(hidden_dims[-1], latent_dim)  # Mean
+        self.fc42 = nn.Linear(hidden_dims[-1], latent_dim)  # Log variance
+        
+        # Decoder
+        decoder_layers = []
+        prev_dim = latent_dim
+        for dim in reversed(hidden_dims):
+            decoder_layers.append(nn.Linear(prev_dim, dim))
+            decoder_layers.append(nn.BatchNorm1d(dim))
+            decoder_layers.append(nn.LeakyReLU())
+            decoder_layers.append(nn.Dropout(dropout_rate))
+            prev_dim = dim
+        
+        self.decoder = nn.Sequential(*decoder_layers)
+        self.fc7 = nn.Linear(hidden_dims[0], input_dim)
+    
+    def encode(self, x):
+        h = self.encoder(x)
+        return self.fc41(h), self.fc42(h)
+    
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+    
+    def decode(self, z):
+        h = self.decoder(z)
+        return torch.sigmoid(self.fc7(h))
+    
+    def forward(self, x):
+        mu, logvar = self.encode(x)
+        z = self.reparameterize(mu, logvar)
+        return self.decode(z), mu, logvar
+    
+
+class VAE_BGM(nn.Module):
+    def __init__(self, input_dim, hidden_dims, latent_dim, num_components=3, dropout_rate=0.1):
+        super(VAE_BGM, self).__init__()
+        self.num_components = num_components
+        self.latent_dim = latent_dim
+        
+        # Encoder
+        encoder_layers = []
+        prev_dim = input_dim
+        for dim in hidden_dims:
+            encoder_layers.append(nn.Linear(prev_dim, dim))
+            encoder_layers.append(nn.BatchNorm1d(dim))
+            encoder_layers.append(nn.LeakyReLU())
+            encoder_layers.append(nn.Dropout(dropout_rate))
+            prev_dim = dim
+        
+        self.encoder = nn.Sequential(*encoder_layers)
+        self.fc_means = nn.Linear(hidden_dims[-1], latent_dim * num_components)  # Means for each component
+        self.fc_logvars = nn.Linear(hidden_dims[-1], latent_dim * num_components)  # Log variances for each component
+        self.fc_logpi = nn.Linear(hidden_dims[-1], num_components)  # Log mixture weights
+        
+        # Decoder
+        decoder_layers = []
+        prev_dim = latent_dim
+        for dim in reversed(hidden_dims):
+            decoder_layers.append(nn.Linear(prev_dim, dim))
+            decoder_layers.append(nn.BatchNorm1d(dim))
+            decoder_layers.append(nn.LeakyReLU())
+            decoder_layers.append(nn.Dropout(dropout_rate))
+            prev_dim = dim
+        
+        self.decoder = nn.Sequential(*decoder_layers)
+        self.fc_out = nn.Linear(hidden_dims[0], input_dim)
+    
+    def encode(self, x):
+        h = self.encoder(x)
+        means = self.fc_means(h).view(-1, self.num_components, self.latent_dim)
+        logvars = self.fc_logvars(h).view(-1, self.num_components, self.latent_dim)
+        logpi = self.fc_logpi(h)
+        return means, logvars, logpi
+    
+    def reparameterize(self, means, logvars, logpi):
+        stds = torch.exp(0.5 * logvars)
+        pis = torch.softmax(logpi, dim=-1)
+        eps = torch.randn_like(stds)
+        z = means + eps * stds
+        return z, pis
+    
+    def decode(self, z):
+        h = self.decoder(z)
+        return torch.sigmoid(self.fc_out(h))
+    
+    def forward(self, x):
+        means, logvars, logpi = self.encode(x)
+        z, pis = self.reparameterize(means, logvars, logpi)
+        z = (pis.unsqueeze(-1) * z).sum(dim=1)  # Weighted sum of z
+        return self.decode(z), means, logvars, pis
