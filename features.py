@@ -26,6 +26,23 @@ def quantile_normalisation(arr):
     from numpy import quantile
     return (arr - quantile(arr, 0.5)) / (quantile(arr, 0.75) - quantile(arr, 0.25))
 
+def make_square(image):
+    from numpy import max, pad, uint8
+    
+    # Determine the original width and height
+    h0, w0 = image.shape[:2]
+    if h0 == w0:
+        return image
+    
+    # Calculate padding for width and height
+    pad_top = max([(w0 - h0) // 2, 0])
+    pad_bottom = max([(w0 - h0) - pad_top, 0])
+    pad_left = max([(h0 - w0) // 2, 0])
+    pad_right = max([(h0 - w0) - pad_left, 0])
+    
+    # Apply padding and return
+    return uint8(pad(image, ((pad_top, pad_bottom), (pad_left, pad_right), (0, 0)), mode='constant', constant_values=0))
+
 ### Image Corrections
 
 def ZtoRGB(channel):
@@ -36,7 +53,7 @@ def ZtoRGB(channel):
 from skimage.filters import gaussian
 def segmental_correction(image, masks, flux_normalisation=gaussian_normalisation, blur=gaussian):
     from liams_funcs import decompose_masks
-    from numpy import stack, nan, zeros_like, uint8
+    from numpy import stack, zeros_like, uint8
 
     R, G, B = image[:,:,0], image[:,:,1], image[:,:,2]
     R1, G1 ,B1 = zeros_like(R), zeros_like(G), zeros_like(B)
@@ -52,11 +69,58 @@ def erodeNtimes(mask, N=1):
     if N == 1: return binary_erosion(mask)
     return erodeNtimes(binary_erosion(mask), N=N-1)
 
+### Custom PyTorch Dataset
+
+def flip_and_rotate(image, flip:bool=True, angles=[0, 90, 180, 270]):
+    from skimage.transform import rotate
+    from numpy import uint8
+
+    if flip:
+        flipped = image[::-1,:].copy()
+        flipped_and_rotated = flip_and_rotate(flipped, flip=False, angles=angles)
+    else:
+        flipped_and_rotated = []
+
+    rotated_images = []
+    for angle in angles:
+        rotated_images.append(uint8(255 * rotate(image, angle)))
+
+    return rotated_images + flipped_and_rotated
+
+from torch.utils.data import Dataset
+class ImageDataset(Dataset):
+    def __init__(self, image_type='nucleus'):
+        from os import listdir
+        from torchvision.io import read_image
+
+        if image_type == 'nucleus':
+            self.data_path = 'pytorch_data/nucleus/'
+        elif image_type == 'cell':
+            self.data_path = 'pytorch_data/cell/'
+
+        self.control_dir = self.data_path + 'control/'
+        self.drug_dir = self.data_path + 'drug/'
+
+        self.images = []
+        self.labels = []
+        for fname in listdir(self.control_dir):
+            self.images.append(read_image(self.control_dir + fname))
+            self.labels.append(0)
+        for fname in listdir(self.drug_dir):
+            self.images.append(read_image(self.drug_dir + fname))
+            self.labels.append(1)
+
+    def __len__(self):
+        return len(self.labels)
+    
+    def __getitem__(self, idx):
+        return self.images[idx], self.labels[idx]
+
 ### Classes
 
 class Segment:
     def __init__(self, cell_rp, nucleus_rp, segment_order:int=0):
-        from numpy import where, nan, clip, exp, pi, quantile
+        from numpy import where, nan, clip, exp, pi, quantile, stack, zeros_like, isnan, uint8
         from mahotas.features import haralick
         from pathtest import main_pathAnalysis
         from Functions_George import detect_outline
@@ -78,6 +142,15 @@ class Segment:
         self.nucleusR = where(self.nucleus_rp.image, self.nucleus_rp.intensity_image[:,:,0], nan)
         self.nucleusB = where(self.nucleus_rp.image, self.nucleus_rp.intensity_image[:,:,2], nan)
 
+        cellRGB = stack([self.cellR, self.cellB, self.cellB], axis=2)
+        nucleusRGB = stack([self.nucleusR, self.nucleusB, self.nucleusB], axis=2)
+
+        cellRGB[isnan(cellRGB)] = 0
+        nucleusRGB[isnan(nucleusRGB)] = 0
+
+        self.cellRGB = uint8(cellRGB)
+        self.nucleusRGB = uint8(nucleusRGB)
+
         # Binary channels
         self.binary_q = lambda q: clip((self.nucleusR > quantile(self.nucleusR[self.nucleus_rp.image], q)).astype(int) + detect_outline(self.nucleus_rp.image), 0, 1)
         self.binary_q50 = self.binary_q(0.5)
@@ -95,7 +168,22 @@ class Segment:
 
         self.quantile = quantile
         self.gaussian = lambda x, mu=128, sigma=25.4: exp(-(x - mu)**2 / (2 * sigma**2)) / (2 * pi * sigma**2)**0.5
-        
+
+    def squareImage(self, final_size:int=0):
+        from numpy import uint8
+        from skimage.transform import resize
+
+        im1 = self.cellRGB
+        im2 = self.nucleusRGB
+
+        # Make square
+        im1_sq = make_square(im1)
+        im2_sq = make_square(im2)
+
+        # Resize
+        if final_size <= 0:
+            return im1_sq, im2_sq
+        return uint8(255 * resize(im1_sq, (final_size, final_size))), uint8(255 * resize(im2_sq, (final_size, final_size)))
 
     def show_segments(self, vmin=0, vmax=255):
         from matplotlib.pyplot import subplots, tight_layout, show, colorbar
@@ -320,6 +408,15 @@ class Masks:
         self.df = df
         return self.df
 
+    def getImages(self, final_size:int=-1):
+        cell_images = [mask.squareImage(final_size=final_size)[0] for mask in self.segments]
+        nucleus_images = [mask.squareImage(final_size=final_size)[1] for mask in self.segments]
+        if self.type == 'control':
+            labels = [0] * len(cell_images)
+        else:
+            labels = [1] * len(cell_images)
+        return (cell_images, nucleus_images), labels
+    
 ###
     
 def inverse_quantile(vals):
@@ -396,3 +493,71 @@ class Dataset:
         condition = (self.df['label'] == 0) * (self.df['Similarity'] >= q_control) + (self.df['label'] == 1) * (self.df['Similarity'] >= q_drug)
         df_reduced = self.df[condition]
         return df_reduced[self.feature_names + ['label']]
+    
+    def retrieveImages(self, final_size:int=-1):
+        from tqdm import tqdm
+
+        self.cell_images = []; self.nucleus_images = []
+        self.labels = []
+        for mask in tqdm(self.masks):
+            images, labels = mask.getImages(final_size=final_size)
+            self.cell_images += images[0]
+            self.nucleus_images += images[1]
+            self.labels += labels
+        return (self.cell_images, self.nucleus_images), self.labels
+
+    def createImageDataset(self, final_size:int=-1):
+        from os import mkdir
+        from os.path import exists
+        from PIL import Image
+        from pandas import DataFrame
+        from tqdm import tqdm
+        from pytorch import ImageDataset
+
+        df_dict = {'cell_fname': [], 'nucleus_fname': [], 'label': []}
+
+        try:
+            cell_images, nucleus_images, labels = self.cell_images, self.nucleus_images, self.labels
+        except:
+            (cell_images, nucleus_images), labels = self.retrieveImages(final_size=final_size)
+
+        # Create data directories
+            
+        cell_control_dir = 'pytorch_dataset/cells/control/'
+        cell_drug_dir = 'pytorch_dataset/cells/drug/'
+        nucleus_control_dir = 'pytorch_dataset/nuclei/control/'
+        nucleus_drug_dir = 'pytorch_dataset/nuclei/drug/' 
+
+        for dir in [cell_control_dir, cell_drug_dir, nucleus_control_dir ,nucleus_drug_dir]:
+            if exists(dir) == False:
+                mkdir(dir)
+
+        # Save images to paths
+                
+        for i, (cell_image, nucleus_image, label) in tqdm(enumerate(zip(cell_images, nucleus_images, labels))):
+            images1 = flip_and_rotate(cell_image)
+            images2 = flip_and_rotate(nucleus_image)
+
+            for j, (im1, im2) in enumerate(zip(images1, images2)):
+                fname = f"{i}_{j}.png"
+
+                im1 = Image.fromarray(im1)
+                im2 = Image.fromarray(im2)
+
+                if label == 0:
+                    cell_dir = cell_control_dir
+                    nucleus_dir = nucleus_control_dir
+                else:
+                    cell_dir = cell_drug_dir
+                    nucleus_dir = nucleus_drug_dir
+
+                im1.save(cell_dir + fname)
+                im2.save(nucleus_dir + fname)
+
+                df_dict['cell_fname'].append(cell_dir + fname)
+                df_dict['nucleus_fname'].append(nucleus_dir + fname)
+                df_dict['label'].append(label)
+
+        self.image_df = DataFrame().from_dict(df_dict)
+
+        return ImageDataset(self.image_df, image_type='cell'), ImageDataset(self.image_df, image_type='nucleus')   
