@@ -57,10 +57,16 @@ def segmental_correction(image, masks, flux_normalisation=gaussian_normalisation
 
     R, G, B = image[:,:,0], image[:,:,1], image[:,:,2]
     R1, G1 ,B1 = zeros_like(R), zeros_like(G), zeros_like(B)
+
+    if flux_normalisation is None:
+        transformation = lambda x: ZtoRGB(flux_normalisation(x))
+    else:
+        transformation = lambda x: x
+
     for mask in decompose_masks(masks, reduce=False):
-        R1[mask] = blur(ZtoRGB(flux_normalisation(R[mask])), preserve_range=True)
-        G1[mask] = blur(ZtoRGB(flux_normalisation(G[mask])), preserve_range=True)
-        B1[mask] = blur(ZtoRGB(flux_normalisation(B[mask])), preserve_range=True)
+        R1[mask] = blur(transformation(R[mask]), preserve_range=True)
+        G1[mask] = blur(transformation(G[mask]), preserve_range=True)
+        B1[mask] = blur(transformation(B[mask]), preserve_range=True)
 
     return stack([R1, G1, B1], axis=2).astype(uint8)
 
@@ -364,7 +370,6 @@ class Masks:
         self.image = imread(image_dir + fname)
         data = load(mask_dir + fname + '.npy')
         self.cells, self.nuclei = data[:,:,0], data[:,:,1]
-        self.mask_vals = arange(1, self.cells.max()+0.5)
         self.levels = get_mask_levels(self.nuclei)
         self.generations = get_generations(self.levels)
 
@@ -419,12 +424,13 @@ class Masks:
     
 ###
     
-def inverse_quantile(vals):
-    return vals.argsort() / vals.argsort().max()
+def inverse_quantile(arr):
+    from scipy.stats import percentileofscore
+    return percentileofscore(arr, arr)
 
 from sklearn.preprocessing import StandardScaler
 class Dataset:
-    def __init__(self, control_paths, penetramax_paths, scaler=StandardScaler):
+    def __init__(self, control_paths, penetramax_paths, scaler=StandardScaler, flux_normalisation=gaussian_normalisation):
         from pandas import concat
         from tqdm import tqdm
 
@@ -436,7 +442,7 @@ class Dataset:
         self.masks = []
         loop = tqdm(zip(self.control_paths + self.penetramax_paths, len(self.control_paths) * ['control'] + len(self.penetramax_paths) * ['penetramax']))
         for fname, type in loop:
-            self.masks.append(Masks(fname.split('/')[-1], type=type))
+            self.masks.append(Masks(fname.split('/')[-1], type=type, flux_normalisation=flux_normalisation))
 
         # Combined feature dataframes from each object
         print("Retrieving features...")
@@ -458,21 +464,23 @@ class Dataset:
         self.X_penetramax_reduced = None
 
     from sklearn.decomposition import PCA
-    def performDimReduction(self, n_components:int=3, Algo=PCA):
+    def performDimReduction(self, n_components:int=2, Algo=PCA):
         self.n_components = n_components
         algo = Algo(n_components=self.n_components)
 
-        is_control = (self.y==0)
-        X_control = self.X[is_control,:]
-        X_penetramax = self.X[~is_control,:]
+        self.is_control = (self.y==0)
+        X_control = self.X_scaled[self.is_control,:]
+        X_penetramax = self.X_scaled[~self.is_control,:]
 
         self.X_control_reduced = algo.fit_transform(X_control)
         self.X_penetramax_reduced = algo.fit_transform(X_penetramax)
-        self.X_reduced = algo.fit_transform(self.X)
+        self.X_reduced = algo.fit_transform(self.X_scaled)
 
-    def makeKDE(self):
+    def makeKDE(self, show_plot:bool=False, save_to=None, resolution:int=100, threshold=0):
         from scipy.stats import gaussian_kde
-        from numpy import append
+        from numpy import append, meshgrid, linspace, stack, arange, quantile
+        from matplotlib.pyplot import subplots, tight_layout, show, savefig, colorbar, subplot_mosaic
+        from matplotlib.colors import ListedColormap, BoundaryNorm
 
         if self.X_control_reduced is None:
             print('Run dimensionality reduction first!..')
@@ -483,11 +491,80 @@ class Dataset:
 
         kde_control = gaussian_kde(flip(self.X_control_reduced))
         kde_penetramax = gaussian_kde(flip(self.X_penetramax_reduced))
+        kde_control_combined = gaussian_kde(flip(self.X_reduced[self.is_control,:]))
+        kde_drug_combined = gaussian_kde(flip(self.X_reduced[~self.is_control,:]))
 
-        control_LLHs = inverse_quantile(kde_control.logpdf(flip(self.X_control_reduced)))
-        drug_LLHs = inverse_quantile(kde_penetramax.logpdf(flip(self.X_penetramax_reduced)))
+        control_LLHs = kde_control.logpdf(flip(self.X_control_reduced))
+        drug_LLHs = kde_penetramax.logpdf(flip(self.X_penetramax_reduced))
 
-        self.df['Similarity'] = append(control_LLHs, drug_LLHs)
+        control_qLLHs = inverse_quantile(control_LLHs)
+        drug_qLLHs = inverse_quantile(drug_LLHs)
+
+        self.df['Similarity'] = append(control_qLLHs, drug_qLLHs)
+
+        if show_plot:
+            xs, ys = linspace(-15, 15, resolution, endpoint=True), linspace(-15, 15, resolution, endpoint=True)
+            xg, yg = meshgrid(xs, ys, indexing='ij')
+
+            zg1 = kde_control.logpdf(stack([xg.flatten(), yg.flatten()], axis=0)).reshape(resolution, resolution)
+            zg2 = kde_penetramax.logpdf(stack([xg.flatten(), yg.flatten()], axis=0)).reshape(resolution, resolution)
+            zg3 = kde_control_combined.logpdf(stack([xg.flatten(), yg.flatten()], axis=0)).reshape(resolution, resolution) - kde_drug_combined.logpdf(stack([xg.flatten(), yg.flatten()], axis=0)).reshape(resolution, resolution)
+
+            qs = [0, 0.05, 0.1, 0.25, 0.5, 1]
+
+            b1 = quantile(control_LLHs, qs); b2 = quantile(drug_LLHs, qs)
+            l1 = b1[1:-1]; l2 = b2[1:-1]
+            b3 = [-100, -10, -5, -3, -1, 0, 1, 3, 5, 10, 100]
+            l3 = b3[1:-1]
+            cmap1 = ListedColormap(['navy', 'blue', 'dodgerblue', 'deepskyblue', 'skyblue'])
+            norm1 = BoundaryNorm(b1, cmap1.N)
+            cmap2 = ListedColormap(['firebrick', 'crimson', 'red', 'orangered', 'darkorange'])
+            norm2 = BoundaryNorm(b2, cmap2.N)
+            cmap3 = ListedColormap(['firebrick', 'crimson', 'red', 'orangered', 'darkorange', 'skyblue', 'deepskyblue', 'dodgerblue', 'blue', 'navy'])
+            norm3 = BoundaryNorm(b3, cmap3.N)
+
+            fig, (l, r, b) = subplots(1, 3, figsize=(16, 4), dpi=300)
+
+            l.set_title('Control'); r.set_title('Drug'); b.set_title('Combined')
+
+            im1 = l.imshow(zg1.T, origin='lower', cmap=cmap1, norm=norm1, extent=(-15, 15, -15, 15))
+            im2 = r.imshow(zg2.T, origin='lower', cmap=cmap2, norm=norm2, extent=(-15, 15, -15, 15))
+            im3 = b.imshow(zg3.T, origin='lower', cmap=cmap3, norm=norm3, extent=(-15, 15, -15, 15))
+
+            cs1 = l.contour(xg.T, yg.T, zg1.T, levels=l1, colors='k')
+            cs2 = r.contour(xg.T, yg.T, zg2.T, levels=l2, colors='k')
+            cs3 = b.contour(xg.T, yg.T, zg3.T, levels=l3, colors='k')
+
+            cbar1 = colorbar(im1, ax=l, label='Quantile')
+            cbar2 = colorbar(im2, ax=r, label='Quantile')
+            cbar3 = colorbar(im3, ax=b, label='Log Prob. Ratio')
+
+            cbar1.ax.set_yticklabels(qs)
+            cbar2.ax.set_yticklabels(qs)
+            cbar3.ax.set_yticklabels(b3)
+
+            control_below = (control_qLLHs < threshold)
+            drug_below = (drug_qLLHs < threshold)
+
+            l.scatter(flip(self.X_control_reduced)[0,control_below], flip(self.X_control_reduced)[1,control_below], zorder=2, c='white', s=0.5, marker='+')
+            l.scatter(flip(self.X_control_reduced)[0,~control_below], flip(self.X_control_reduced)[1,~control_below], zorder=1, c='white', s=0.5)
+
+            r.scatter(flip(self.X_penetramax_reduced)[0,drug_below], flip(self.X_penetramax_reduced)[1,drug_below], zorder=2, c='black', s=0.5, marker='+')
+            r.scatter(flip(self.X_penetramax_reduced)[0,~drug_below], flip(self.X_penetramax_reduced)[1,~drug_below], zorder=1, c='black', s=0.5)
+
+            b.scatter(flip(self.X_control_reduced)[0,control_below], flip(self.X_control_reduced)[1,control_below], zorder=2, c='white', s=0.5, marker='+')
+            b.scatter(flip(self.X_control_reduced)[0,~control_below], flip(self.X_control_reduced)[1,~control_below], zorder=1, c='white', s=0.5)
+            b.scatter(flip(self.X_penetramax_reduced)[0,drug_below], flip(self.X_penetramax_reduced)[1,drug_below], zorder=2, c='black', s=0.5, marker='+')
+            b.scatter(flip(self.X_penetramax_reduced)[0,~drug_below], flip(self.X_penetramax_reduced)[1,~drug_below], zorder=1, c='black', s=0.5)
+
+            for ax in [l, r, b]:
+                ax.set_xlim(-15, 15); ax.set_ylim(-15, 15)
+                ax.set_xlabel('PCA 1'); ax.set_ylabel('PCA 2')
+
+            tight_layout()
+            if save_to is not None:
+                savefig(save_to, dpi=300, bbox_inches='tight')
+            show()
 
     def makeSelection(self, q_control=0.05, q_drug=0.05):
         condition = (self.df['label'] == 0) * (self.df['Similarity'] >= q_control) + (self.df['label'] == 1) * (self.df['Similarity'] >= q_drug)
