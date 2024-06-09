@@ -58,7 +58,7 @@ def segmental_correction(image, masks, flux_normalisation=gaussian_normalisation
     R, G, B = image[:,:,0], image[:,:,1], image[:,:,2]
     R1, G1 ,B1 = zeros_like(R), zeros_like(G), zeros_like(B)
 
-    if flux_normalisation is None:
+    if flux_normalisation is not None:
         transformation = lambda x: ZtoRGB(flux_normalisation(x))
     else:
         transformation = lambda x: x
