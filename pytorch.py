@@ -1,4 +1,15 @@
 from torch.utils.data import Dataset as DS
+
+def get_loss(model, dataloader, loss_fn):
+    from torch import no_grad
+
+    model.eval()
+    with no_grad():
+        loss = 0  
+        for (X, y) in dataloader:
+            y_pred = model(X)
+            loss += loss_fn(y_pred, y)
+        return loss
 class ImageDataset(DS):
     def __init__(self, df, image_type='nucleus'):
         from numpy.random import permutation
@@ -185,7 +196,8 @@ class Resnet152(Module):
         self.model = Sequential(
             rn,
             ReLU(),
-            Linear(1000, 2)
+            Linear(1000, 2).
+
         )
 
         for p in list(self.model.parameters())[-train_layers:]:
