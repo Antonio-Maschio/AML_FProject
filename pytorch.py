@@ -1,6 +1,6 @@
 from torch.utils.data import Dataset as DS
 
-def get_loss(model, dataloader, loss_fn, device='cpu'):
+def apply_val(model, dataloader, loss_fn, device='cpu'):
     from torch import no_grad
     from tqdm import tqdm
     from numpy import array
@@ -9,15 +9,19 @@ def get_loss(model, dataloader, loss_fn, device='cpu'):
     with no_grad():
         losses = []
         weights = []
+        n_correct = 0
+        N = 0
 
         for (X, y) in tqdm(dataloader):
             X, y = X.to(device), y.to(device)
             y_pred = model(X)
             losses.append(loss_fn(y_pred, y))
             weights.append(y.size()[0])
+            n_correct += (y == y_pred.argmax(axis=1)).sum().item()
+            N += y.size()[0]
 
         losses, weights = array([l.cpu().item() for l in losses]), array(weights)
-        return (losses * weights).sum() / weights.sum()
+        return (losses * weights).sum() / weights.sum(), n_correct / N
 class ImageDataset(DS):
     def __init__(self, df, image_type='nucleus'):
         from numpy.random import permutation
@@ -54,7 +58,7 @@ class LoadImageDataset(DS):
 ### Pretrained Models
     
 from torchvision.models import resnet34
-from torch.nn import Module, Sequential, Flatten, Linear, ReLU
+from torch.nn import Module, Sequential, Flatten, Linear, ReLU, Softmax
 
 class Resnet34L(Module):
     def __init__(self, n_layers:int=3, n_nodes:int=512):
@@ -160,7 +164,8 @@ class Resnet18(Module):
         self.model = Sequential(
             rn,
             ReLU(),
-            Linear(1000, 2)
+            Linear(1000, 2),
+            Softmax()
         )
 
         for count, p in enumerate(list(self.model.parameters())):
@@ -183,7 +188,8 @@ class Resnet34(Module):
         self.model = Sequential(
             rn,
             ReLU(),
-            Linear(1000, 2)
+            Linear(1000, 2),
+            Softmax()
         )
 
         for count, p in enumerate(list(self.model.parameters())):
@@ -206,7 +212,8 @@ class Resnet152(Module):
         self.model = Sequential(
             rn,
             ReLU(),
-            Linear(1000, 2)
+            Linear(1000, 2),
+            Softmax()
         )
 
         for count, p in enumerate(list(self.model.parameters())):
