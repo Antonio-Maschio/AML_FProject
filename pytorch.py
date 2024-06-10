@@ -1,15 +1,23 @@
 from torch.utils.data import Dataset as DS
 
-def get_loss(model, dataloader, loss_fn):
+def get_loss(model, dataloader, loss_fn, device='cpu'):
     from torch import no_grad
+    from tqdm import tqdm
+    from numpy import array
 
     model.eval()
     with no_grad():
-        loss = 0  
-        for (X, y) in dataloader:
+        losses = []
+        weights = []
+
+        for (X, y) in tqdm(dataloader):
+            X, y = X.to(device), y.to(device)
             y_pred = model(X)
-            loss += loss_fn(y_pred, y)
-        return loss
+            losses.append(loss_fn(y_pred, y))
+            weights.append(y.size()[0])
+
+        losses, weights = array(losses), array(weights)
+        return (losses * weights).sum() / weights.sum()
 class ImageDataset(DS):
     def __init__(self, df, image_type='nucleus'):
         from numpy.random import permutation
@@ -155,8 +163,9 @@ class Resnet18(Module):
             Linear(1000, 2)
         )
 
-        for p in list(self.model.parameters())[-train_layers:]:
-            p.requires_grad = False
+        for count, p in enumerate(list(self.model.parameters())):
+            if count < len(list(self.model.parameters())) - 1 - train_layers:
+                p.requires_grad = False
     
     def forward(self, x):
         return self.model(x)
@@ -177,8 +186,9 @@ class Resnet34(Module):
             Linear(1000, 2)
         )
 
-        for p in list(self.model.parameters())[-train_layers:]:
-            p.requires_grad = False
+        for count, p in enumerate(list(self.model.parameters())):
+            if count < len(list(self.model.parameters())) - 1 - train_layers:
+                p.requires_grad = False
     
     def forward(self, x):
         return self.model(x)
@@ -196,12 +206,12 @@ class Resnet152(Module):
         self.model = Sequential(
             rn,
             ReLU(),
-            Linear(1000, 2).
-
+            Linear(1000, 2)
         )
 
-        for p in list(self.model.parameters())[-train_layers:]:
-            p.requires_grad = False
+        for count, p in enumerate(list(self.model.parameters())):
+            if count < len(list(self.model.parameters())) - 1 - train_layers:
+                p.requires_grad = False
     
     def forward(self, x):
         return self.model(x)
