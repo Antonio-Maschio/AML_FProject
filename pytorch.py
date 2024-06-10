@@ -55,9 +55,9 @@ class Resnet34L(Module):
                 model.append(ReLU())
             elif i == n_layers-1:
                 model.append(Linear(n_nodes, 2))
-                model.append(ReLU())
             else:
                 model.append(Linear(n_nodes, n_nodes))
+                model.append(ReLU())
 
         self.model = model
     
@@ -86,9 +86,9 @@ class Resnet34M(Module):
                 model.append(ReLU())
             elif i == n_layers-1:
                 model.append(Linear(n_nodes, 2))
-                model.append(ReLU())
             else:
                 model.append(Linear(n_nodes, n_nodes))
+                model.append(ReLU())
 
         self.model = model
     
@@ -117,11 +117,79 @@ class Resnet34S(Module):
                 model.append(ReLU())
             elif i == n_layers-1:
                 model.append(Linear(n_nodes, 2))
-                model.append(ReLU())
             else:
                 model.append(Linear(n_nodes, n_nodes))
+                model.append(ReLU())
 
         self.model = model
+    
+    def forward(self, x):
+        return self.model(x)
+    
+    def getSummary(self):
+        from torchsummary import summary
+        return summary(self, (3, 224, 224))
+    
+### New generation of models
+    
+class Resnet18(Module):
+    def __init__(self, train_layers:int=10):
+        super().__init__()
+        from torchvision.models import resnet18
+
+        rn = resnet18(pretrained=True)
+        self.model = Sequential(
+            rn,
+            ReLU(),
+            Linear(1000, 2)
+        )
+
+        for p in list(self.model.parameters())[-train_layers:]:
+            p.requires_grad = False
+    
+    def forward(self, x):
+        return self.model(x)
+    
+    def getSummary(self):
+        from torchsummary import summary
+        return summary(self, (3, 224, 224))
+
+class Resnet34(Module):
+    def __init__(self, train_layers:int=10):
+        super().__init__()
+        from torchvision.models import resnet34
+
+        rn = resnet34(pretrained=True)
+        self.model = Sequential(
+            rn,
+            ReLU(),
+            Linear(1000, 2)
+        )
+
+        for p in list(self.model.parameters())[-train_layers:]:
+            p.requires_grad = False
+    
+    def forward(self, x):
+        return self.model(x)
+    
+    def getSummary(self):
+        from torchsummary import summary
+        return summary(self, (3, 224, 224))
+    
+class Resnet152(Module):
+    def __init__(self, train_layers:int=10):
+        super().__init__()
+        from torchvision.models import resnet152
+
+        rn = resnet152(pretrained=True)
+        self.model = Sequential(
+            rn,
+            ReLU(),
+            Linear(1000, 2)
+        )
+
+        for p in list(self.model.parameters())[-train_layers:]:
+            p.requires_grad = False
     
     def forward(self, x):
         return self.model(x)
