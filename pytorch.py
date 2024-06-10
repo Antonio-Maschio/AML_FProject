@@ -16,7 +16,7 @@ def get_loss(model, dataloader, loss_fn, device='cpu'):
             losses.append(loss_fn(y_pred, y))
             weights.append(y.size()[0])
 
-        losses, weights = array(losses), array(weights)
+        losses, weights = array([l.cpu().item() for l in losses]), array(weights)
         return (losses * weights).sum() / weights.sum()
 class ImageDataset(DS):
     def __init__(self, df, image_type='nucleus'):
