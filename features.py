@@ -341,7 +341,6 @@ class Segment:
 
     def getSymB(self): return abs(self.quantile(self.nucleusB[self.nucleus_rp.image], 0.5) - self.nucleusB[self.nucleus_rp.image].mean())
 
-
     #def getTotalPaths(self): return self.paths[0]
     #def getPathLength(self): return self.paths[1]
     
@@ -405,12 +404,17 @@ class Masks:
         else:
             data['label'] = [1] * len(self.segments)
 
+        images_R = []; images_B = []
         for mask in self.segments:
+            images_R.append(mask.nucleusR)
+            images_B.append(mask.nucleusB)
             for label, val in zip(mask.retrieveFeatureNames(), mask.retrieveFeatures()):
                 data[label].append(val)
 
         df = df.from_dict(data)
         self.df = df
+        self.images_R = images_R
+        self.images_B = images_B
         return self.df
 
     def getImages(self, final_size:int=-1):
@@ -447,8 +451,14 @@ class Dataset:
         # Combined feature dataframes from each object
         print("Retrieving features...")
         dfs = []
+        self.images_R = []
+        self.images_B = []
         for mask in tqdm(self.masks):
-            dfs.append(mask.getDataFrame())
+            df = mask.getDataFrame()
+            dfs.append(df)
+            self.images_R += mask.images_R
+            self.images_B += mask.images_B
+
         self.df = concat(dfs)
         self.feature_names = self.masks[0].segments[0].retrieveFeatureNames()
         self.feature_df = self.df[self.feature_names]
@@ -463,23 +473,29 @@ class Dataset:
         self.X_control_reduced = None
         self.X_penetramax_reduced = None
 
+        self.is_control = (self.y==0)
+
+        self.control_images_R = [self.images_R[i] for i, b in enumerate(self.is_control) if b]
+        self.control_images_B = [self.images_B[i] for (i, b) in enumerate(self.is_control) if b]
+        self.drug_images_R = [self.images_R[i] for i, b in enumerate(self.is_control) if not b]
+        self.drug_images_B = [self.images_B[i] for (i, b) in enumerate(self.is_control) if not b]
+
     from sklearn.decomposition import PCA
     def performDimReduction(self, n_components:int=2, Algo=PCA):
         self.n_components = n_components
         algo = Algo(n_components=self.n_components)
 
-        self.is_control = (self.y==0)
-        X_control = self.X_scaled[self.is_control,:]
-        X_penetramax = self.X_scaled[~self.is_control,:]
+        self.X_control = self.X_scaled[self.is_control,:]
+        self.X_penetramax = self.X_scaled[~self.is_control,:]
 
-        self.X_control_reduced = algo.fit_transform(X_control)
-        self.X_penetramax_reduced = algo.fit_transform(X_penetramax)
+        self.X_control_reduced = algo.fit_transform(self.X_control)
+        self.X_penetramax_reduced = algo.fit_transform(self.X_penetramax)
         self.X_reduced = algo.fit_transform(self.X_scaled)
 
     def makeKDE(self, show_plot:bool=False, save_to=None, resolution:int=100, threshold=0):
         from scipy.stats import gaussian_kde
-        from numpy import append, meshgrid, linspace, stack, arange, quantile
-        from matplotlib.pyplot import subplots, tight_layout, show, savefig, colorbar, subplot_mosaic
+        from numpy import append, meshgrid, linspace, stack, quantile
+        from matplotlib.pyplot import subplots, tight_layout, show, savefig, colorbar
         from matplotlib.colors import ListedColormap, BoundaryNorm
 
         if self.X_control_reduced is None:
@@ -497,10 +513,10 @@ class Dataset:
         control_LLHs = kde_control.logpdf(flip(self.X_control_reduced))
         drug_LLHs = kde_penetramax.logpdf(flip(self.X_penetramax_reduced))
 
-        control_qLLHs = inverse_quantile(control_LLHs)
-        drug_qLLHs = inverse_quantile(drug_LLHs)
+        self.control_qLLHs = inverse_quantile(control_LLHs)
+        self.drug_qLLHs = inverse_quantile(drug_LLHs)
 
-        self.df['Similarity'] = append(control_qLLHs, drug_qLLHs)
+        self.df['Similarity'] = append(self.control_qLLHs, self.drug_qLLHs)
 
         if show_plot:
             xs, ys = linspace(-15, 15, resolution, endpoint=True), linspace(-15, 15, resolution, endpoint=True)
@@ -543,8 +559,8 @@ class Dataset:
             cbar2.ax.set_yticklabels(qs)
             cbar3.ax.set_yticklabels(b3)
 
-            control_below = (control_qLLHs < threshold)
-            drug_below = (drug_qLLHs < threshold)
+            control_below = (self.control_qLLHs < threshold)
+            drug_below = (self.drug_qLLHs < threshold)
 
             l.scatter(flip(self.X_control_reduced)[0,control_below], flip(self.X_control_reduced)[1,control_below], zorder=2, c='white', s=0.5, marker='+')
             l.scatter(flip(self.X_control_reduced)[0,~control_below], flip(self.X_control_reduced)[1,~control_below], zorder=1, c='white', s=0.5)
@@ -566,7 +582,73 @@ class Dataset:
                 savefig(save_to, dpi=300, bbox_inches='tight')
             show()
 
-    def makeSelection(self, q_control=0.05, q_drug=0.05):
+    def makeDBSCAN(self, eps:float=7, min_samples:int=100, show_plot:bool=False, save_to=None):
+        from sklearn.cluster import DBSCAN
+        from numpy import append
+        from matplotlib.pyplot import subplots, tight_layout, savefig, show
+
+        clusters_control = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(self.X_control)
+        clusters_drug = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(self.X_penetramax)
+        self.df['Cluster'] = append(clusters_control, clusters_drug)
+
+        if show_plot:
+            fig, (l, r, b) = subplots(1, 3, figsize=(16, 4), dpi=300)
+
+            l.set_title('Control'); r.set_title('Drug'); b.set_title('Combined')
+
+            l.scatter(self.X_control_reduced[:,0], self.X_control_reduced[:,1], c=['dodgerblue' if c>-1 else 'k' for c in clusters_control])
+            r.scatter(self.X_penetramax_reduced[:,0], self.X_penetramax_reduced[:,1], c=['firebrick' if c>-1 else 'k' for c in clusters_drug])
+            
+            b.scatter(self.X_reduced[self.is_control,0], self.X[self.is_control,1], c=['dodgerblue' if c>-1 else 'k' for c in clusters_control])
+            b.scatter(self.X_reduced[~self.is_control,0], self.X[~self.is_control,1], c=['firebrick' if c>-1 else 'k' for c in clusters_control])
+
+            for ax in [l, r, b]:
+                ax.set_xlim(-15, 15); ax.set_ylim(-15, 15)
+                ax.set_xlabel('PCA 1'); ax.set_ylabel('PCA 2')
+
+            tight_layout()
+            if save_to is not None:
+                savefig(save_to, dpi=300, bbox_inches='tight')
+            show()
+
+    def showBestAndWorst(self, save_to=None):
+        from numpy import argsort
+        from matplotlib.pyplot import subplots, tight_layout, savefig, show
+
+        worst_to_best_control = argsort(self.control_qLLHs)
+        worst_to_best_drug = argsort(self.drug_qLLHs)
+
+        kwargs = {'vmin': 0, 'vmax': 255, 'cmap': 'Reds', 'origin': 'lower'}
+
+        fig, axes = subplots(2, 4, figsize=(12, 6), dpi=300)
+
+        axes[0,0].set_title('Worst control')
+        axes[0,0].imshow(self.control_images_R[worst_to_best_control[0]], **kwargs)
+        axes[0,1].set_title('Second-worst control')
+        axes[0,1].imshow(self.control_images_R[worst_to_best_control[1]], **kwargs)
+        axes[0,2].set_title('Second-best control')
+        axes[0,2].imshow(self.control_images_R[worst_to_best_control[-2]], **kwargs)
+        axes[0,3].set_title('Best control')
+        axes[0,3].imshow(self.control_images_R[worst_to_best_control[-1]], **kwargs)
+
+        axes[1,0].set_title('Worst drug')
+        axes[1,0].imshow(self.drug_images_R[worst_to_best_drug[0]], **kwargs)
+        axes[1,1].set_title('Second-worst drug')
+        axes[1,1].imshow(self.drug_images_R[worst_to_best_drug[1]], **kwargs)
+        axes[1,2].set_title('Second-best drug')
+        axes[1,2].imshow(self.drug_images_R[worst_to_best_drug[-2]], **kwargs)
+        axes[1,3].set_title('Best drug')
+        axes[1,3].imshow(self.drug_images_R[worst_to_best_drug[-1]], **kwargs)
+
+        for ax in axes.flatten():
+            ax.tick_params(bottom=False, labelbottom=False, left=False, labelleft=False)
+
+        tight_layout()
+        if save_to is not None:
+            savefig(save_to, dpi=300, bbox_inches='tight')
+        show()
+
+    def makeSelectionKDE(self, q_control=0.05, q_drug=0.05):
         condition = (self.df['label'] == 0) * (self.df['Similarity'] >= q_control) + (self.df['label'] == 1) * (self.df['Similarity'] >= q_drug)
         df_reduced = self.df[condition]
         return df_reduced[self.feature_names + ['label']]
