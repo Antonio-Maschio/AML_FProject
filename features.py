@@ -125,7 +125,7 @@ class ImageDataset(Dataset):
 ### Classes
 
 class Segment:
-    def __init__(self, cell_rp, nucleus_rp, segment_order:int=0):
+    def __init__(self, cell_rp, nucleus_rp, segment_order:int=0, bq:float=0.25):
         from numpy import where, nan, clip, exp, pi, quantile, stack, zeros_like, isnan, uint8
         from mahotas.features import haralick
         from pathtest import main_pathAnalysis
@@ -159,7 +159,7 @@ class Segment:
 
         # Binary channels
         self.binary_q = lambda q: clip((self.nucleusR > quantile(self.nucleusR[self.nucleus_rp.image], q)).astype(int) + detect_outline(self.nucleus_rp.image), 0, 1)
-        self.binary_q50 = self.binary_q(0.5)
+        self.binary_q50 = self.binary_q(bq)
 
         # Haralick features
 
@@ -351,7 +351,7 @@ class Segment:
     def retrieveFeatures(self): return [getattr(self, func)() for func in self.retrieveFeatureNames()]
 
 class Masks:
-    def __init__(self, fname, type='control', flux_normalisation=gaussian_normalisation):
+    def __init__(self, fname, type='control', flux_normalisation=gaussian_normalisation, bq:float=0.25):
         from cellpose.io import imread
         from numpy import load, arange, meshgrid
         from skimage.measure import regionprops
@@ -383,7 +383,7 @@ class Masks:
         self.segments = []
         points = []
         for cell_rp, nucleus_rp, generation in zip(self.cell_regionprops, self.nucleus_regionprops, self.generations):
-            seg = Segment(cell_rp, nucleus_rp, segment_order=generation)
+            seg = Segment(cell_rp, nucleus_rp, segment_order=generation, bq=bq)
             points.append(seg.centre)
             self.segments.append(seg)
 
@@ -430,11 +430,11 @@ class Masks:
     
 def inverse_quantile(arr):
     from scipy.stats import percentileofscore
-    return percentileofscore(arr, arr)
+    return percentileofscore(arr, arr) / 100
 
 from sklearn.preprocessing import StandardScaler
 class Dataset:
-    def __init__(self, control_paths, drug_paths, scaler=StandardScaler, flux_normalisation=gaussian_normalisation):
+    def __init__(self, control_paths, drug_paths, scaler=StandardScaler, flux_normalisation=gaussian_normalisation, bq:float=0.25):
         from pandas import concat
         from tqdm import tqdm
 
@@ -446,7 +446,7 @@ class Dataset:
         self.masks = []
         loop = tqdm(zip(self.control_paths + self.drug_paths, len(self.control_paths) * ['control'] + len(self.drug_paths) * ['drug']))
         for fname, type in loop:
-            self.masks.append(Masks(fname.split('/')[-1], type=type, flux_normalisation=flux_normalisation))
+            self.masks.append(Masks(fname.split('/')[-1], type=type, flux_normalisation=flux_normalisation, bq=bq))
 
         # Combined feature dataframes from each object
         print("Retrieving features...")
@@ -511,7 +511,7 @@ class Dataset:
         kde_drug_combined = gaussian_kde(flip(self.X_reduced[~self.is_control,:]))
 
         control_LLHs = kde_control.logpdf(flip(self.X_control_reduced))
-        drug_LLHs = kde_drug.logpdf(flip(self.X_driug_reduced))
+        drug_LLHs = kde_drug.logpdf(flip(self.X_drug_reduced))
 
         self.control_qLLHs = inverse_quantile(control_LLHs)
         self.drug_qLLHs = inverse_quantile(drug_LLHs)
@@ -562,15 +562,15 @@ class Dataset:
             control_below = (self.control_qLLHs < threshold)
             drug_below = (self.drug_qLLHs < threshold)
 
-            l.scatter(self.X_control_reduced[control_below,0], self.X_control_reduced[control_below,1], zorder=2, c='white', s=0.5, marker='+')
+            l.scatter(self.X_control_reduced[control_below,0], self.X_control_reduced[control_below,1], zorder=2, c='fuchsia', s=0.5)
             l.scatter(self.X_control_reduced[~control_below,0], self.X_control_reduced[~control_below,1], zorder=1, c='white', s=0.5)
 
-            r.scatter(self.X_drug_reduced[drug_below,0], self.X_drug_reduced[drug_below,1], zorder=2, c='black', s=0.5, marker='+')
+            r.scatter(self.X_drug_reduced[drug_below,0], self.X_drug_reduced[drug_below,1], zorder=2, c='gold', s=0.5)
             r.scatter(self.X_drug_reduced[~drug_below,0], self.X_drug_reduced[~drug_below,1], zorder=1, c='black', s=0.5)
 
-            b.scatter(self.X_reduced[self.is_control,:][control_below,0], self.X_reduced[self.is_control,:][control_below,1], zorder=2, c='white', s=0.5, marker='+')
+            b.scatter(self.X_reduced[self.is_control,:][control_below,0], self.X_reduced[self.is_control,:][control_below,1], zorder=2, c='fuchsia', s=0.5)
             b.scatter(self.X_reduced[self.is_control,:][~control_below,0], self.X_reduced[self.is_control,:][~control_below,1], zorder=1, c='white', s=0.5)
-            b.scatter(self.X_reduced[~self.is_control,:][drug_below,0], self.X_reduced[~self.is_control,:][drug_below,1], zorder=2, c='black', s=0.5, marker='+')
+            b.scatter(self.X_reduced[~self.is_control,:][drug_below,0], self.X_reduced[~self.is_control,:][drug_below,1], zorder=2, c='gold', s=0.5)
             b.scatter(self.X_reduced[~self.is_control,:][~drug_below,0], self.X_reduced[~self.is_control,:][~drug_below,1], zorder=1, c='black', s=0.5)
 
             for ax in [l, r, b]:
