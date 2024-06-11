@@ -362,8 +362,8 @@ class Masks:
             image_dir = '../control_images/'
             mask_dir = 'segments/control/'
         else:
-            image_dir = '../penetramax_images/'
-            mask_dir = 'segments/penetramax/'
+            image_dir = '../drug_images/'
+            mask_dir = 'segments/drug/'
 
         # Load image and its masks
         self.image = imread(image_dir + fname)
@@ -434,17 +434,17 @@ def inverse_quantile(arr):
 
 from sklearn.preprocessing import StandardScaler
 class Dataset:
-    def __init__(self, control_paths, penetramax_paths, scaler=StandardScaler, flux_normalisation=gaussian_normalisation):
+    def __init__(self, control_paths, drug_paths, scaler=StandardScaler, flux_normalisation=gaussian_normalisation):
         from pandas import concat
         from tqdm import tqdm
 
         self.control_paths = control_paths
-        self.penetramax_paths = penetramax_paths
+        self.drug_paths = drug_paths
 
         # Create list of Masks objects
         print("Instantiating masks...")
         self.masks = []
-        loop = tqdm(zip(self.control_paths + self.penetramax_paths, len(self.control_paths) * ['control'] + len(self.penetramax_paths) * ['penetramax']))
+        loop = tqdm(zip(self.control_paths + self.drug_paths, len(self.control_paths) * ['control'] + len(self.drug_paths) * ['drug']))
         for fname, type in loop:
             self.masks.append(Masks(fname.split('/')[-1], type=type, flux_normalisation=flux_normalisation))
 
@@ -471,7 +471,7 @@ class Dataset:
 
         self.X_reduced = None
         self.X_control_reduced = None
-        self.X_penetramax_reduced = None
+        self.X_drug_reduced = None
 
         self.is_control = (self.y==0)
 
@@ -486,10 +486,10 @@ class Dataset:
         algo = Algo(n_components=self.n_components)
 
         self.X_control = self.X_scaled[self.is_control,:]
-        self.X_penetramax = self.X_scaled[~self.is_control,:]
+        self.X_drug = self.X_scaled[~self.is_control,:]
 
         self.X_control_reduced = algo.fit_transform(self.X_control)
-        self.X_penetramax_reduced = algo.fit_transform(self.X_penetramax)
+        self.X_drug_reduced = algo.fit_transform(self.X_drug)
         self.X_reduced = algo.fit_transform(self.X_scaled)
 
     def makeKDE(self, show_plot:bool=False, save_to=None, resolution:int=100, threshold=0):
@@ -506,12 +506,12 @@ class Dataset:
         else: flip = lambda x: x.T
 
         kde_control = gaussian_kde(flip(self.X_control_reduced))
-        kde_penetramax = gaussian_kde(flip(self.X_penetramax_reduced))
+        kde_drug = gaussian_kde(flip(self.X_drug_reduced))
         kde_control_combined = gaussian_kde(flip(self.X_reduced[self.is_control,:]))
         kde_drug_combined = gaussian_kde(flip(self.X_reduced[~self.is_control,:]))
 
         control_LLHs = kde_control.logpdf(flip(self.X_control_reduced))
-        drug_LLHs = kde_penetramax.logpdf(flip(self.X_penetramax_reduced))
+        drug_LLHs = kde_drug.logpdf(flip(self.X_driug_reduced))
 
         self.control_qLLHs = inverse_quantile(control_LLHs)
         self.drug_qLLHs = inverse_quantile(drug_LLHs)
@@ -523,7 +523,7 @@ class Dataset:
             xg, yg = meshgrid(xs, ys, indexing='ij')
 
             zg1 = kde_control.logpdf(stack([xg.flatten(), yg.flatten()], axis=0)).reshape(resolution, resolution)
-            zg2 = kde_penetramax.logpdf(stack([xg.flatten(), yg.flatten()], axis=0)).reshape(resolution, resolution)
+            zg2 = kde_drug.logpdf(stack([xg.flatten(), yg.flatten()], axis=0)).reshape(resolution, resolution)
             zg3 = kde_control_combined.logpdf(stack([xg.flatten(), yg.flatten()], axis=0)).reshape(resolution, resolution) - kde_drug_combined.logpdf(stack([xg.flatten(), yg.flatten()], axis=0)).reshape(resolution, resolution)
 
             qs = [0, 0.05, 0.1, 0.25, 0.5, 1]
@@ -562,16 +562,16 @@ class Dataset:
             control_below = (self.control_qLLHs < threshold)
             drug_below = (self.drug_qLLHs < threshold)
 
-            l.scatter(flip(self.X_control_reduced)[0,control_below], flip(self.X_control_reduced)[1,control_below], zorder=2, c='white', s=0.5, marker='+')
-            l.scatter(flip(self.X_control_reduced)[0,~control_below], flip(self.X_control_reduced)[1,~control_below], zorder=1, c='white', s=0.5)
+            l.scatter(self.X_control_reduced[control_below,0], self.X_control_reduced[control_below,1], zorder=2, c='white', s=0.5, marker='+')
+            l.scatter(self.X_control_reduced[~control_below,0], self.X_control_reduced[~control_below,1], zorder=1, c='white', s=0.5)
 
-            r.scatter(flip(self.X_penetramax_reduced)[0,drug_below], flip(self.X_penetramax_reduced)[1,drug_below], zorder=2, c='black', s=0.5, marker='+')
-            r.scatter(flip(self.X_penetramax_reduced)[0,~drug_below], flip(self.X_penetramax_reduced)[1,~drug_below], zorder=1, c='black', s=0.5)
+            r.scatter(self.X_drug_reduced[drug_below,0], self.X_drug_reduced[drug_below,1], zorder=2, c='black', s=0.5, marker='+')
+            r.scatter(self.X_drug_reduced[~drug_below,0], self.X_drug_reduced[~drug_below,1], zorder=1, c='black', s=0.5)
 
-            b.scatter(flip(self.X_control_reduced)[0,control_below], flip(self.X_control_reduced)[1,control_below], zorder=2, c='white', s=0.5, marker='+')
-            b.scatter(flip(self.X_control_reduced)[0,~control_below], flip(self.X_control_reduced)[1,~control_below], zorder=1, c='white', s=0.5)
-            b.scatter(flip(self.X_penetramax_reduced)[0,drug_below], flip(self.X_penetramax_reduced)[1,drug_below], zorder=2, c='black', s=0.5, marker='+')
-            b.scatter(flip(self.X_penetramax_reduced)[0,~drug_below], flip(self.X_penetramax_reduced)[1,~drug_below], zorder=1, c='black', s=0.5)
+            b.scatter(self.X_reduced[self.is_control,:][control_below,0], self.X_reduced[self.is_control,:][control_below,1], zorder=2, c='white', s=0.5, marker='+')
+            b.scatter(self.X_reduced[self.is_control,:][~control_below,0], self.X_reduced[self.is_control,:][~control_below,1], zorder=1, c='white', s=0.5)
+            b.scatter(self.X_reduced[~self.is_control,:][drug_below,0], self.X_reduced[~self.is_control,:][drug_below,1], zorder=2, c='black', s=0.5, marker='+')
+            b.scatter(self.X_reduced[~self.is_control,:][~drug_below,0], self.X_reduced[~self.is_control,:][~drug_below,1], zorder=1, c='black', s=0.5)
 
             for ax in [l, r, b]:
                 ax.set_xlim(-15, 15); ax.set_ylim(-15, 15)
@@ -588,7 +588,7 @@ class Dataset:
         from matplotlib.pyplot import subplots, tight_layout, savefig, show
 
         clusters_control = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(self.X_control)
-        clusters_drug = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(self.X_penetramax)
+        clusters_drug = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(self.X_drug)
         self.df['Cluster'] = append(clusters_control, clusters_drug)
 
         if show_plot:
@@ -596,11 +596,11 @@ class Dataset:
 
             l.set_title('Control'); r.set_title('Drug'); b.set_title('Combined')
 
-            l.scatter(self.X_control_reduced[:,0], self.X_control_reduced[:,1], c=['dodgerblue' if c>-1 else 'k' for c in clusters_control])
-            r.scatter(self.X_penetramax_reduced[:,0], self.X_penetramax_reduced[:,1], c=['firebrick' if c>-1 else 'k' for c in clusters_drug])
+            l.scatter(self.X_control_reduced[:,0], self.X_control_reduced[:,1], c=['dodgerblue' if c>-1 else 'k' for c in clusters_control], s=0.5)
+            r.scatter(self.X_drug_reduced[:,0], self.X_drug_reduced[:,1], c=['firebrick' if c>-1 else 'k' for c in clusters_drug], s=0.5)
             
-            b.scatter(self.X_reduced[self.is_control,0], self.X[self.is_control,1], c=['dodgerblue' if c>-1 else 'k' for c in clusters_control])
-            b.scatter(self.X_reduced[~self.is_control,0], self.X[~self.is_control,1], c=['firebrick' if c>-1 else 'k' for c in clusters_control])
+            b.scatter(self.X_reduced[self.is_control,0], self.X[self.is_control,1], c=['dodgerblue' if c>-1 else 'k' for c in clusters_control], s=0.5)
+            b.scatter(self.X_reduced[~self.is_control,0], self.X[~self.is_control,1], c=['firebrick' if c>-1 else 'k' for c in clusters_drug], s=0.5)
 
             for ax in [l, r, b]:
                 ax.set_xlim(-15, 15); ax.set_ylim(-15, 15)
