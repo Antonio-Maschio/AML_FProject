@@ -648,9 +648,13 @@ class Dataset:
             savefig(save_to, dpi=300, bbox_inches='tight')
         show()
 
-    def makeSelectionKDE(self, q_control=0.05, q_drug=0.05):
+    def makeSelectionKDE(self, q_control=0.05, q_drug=0.05, get_indices:bool=False):
+        from numpy import arange
+
         condition = (self.df['label'] == 0) * (self.df['Similarity'] >= q_control) + (self.df['label'] == 1) * (self.df['Similarity'] >= q_drug)
         df_reduced = self.df[condition]
+        if get_indices:
+            return df_reduced[self.feature_names + ['label']], arange(len(self.df['label']))[condition]
         return df_reduced[self.feature_names + ['label']]
     
     def retrieveImages(self, final_size:int=-1):

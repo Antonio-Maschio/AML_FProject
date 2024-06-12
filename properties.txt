@@ -42,22 +42,10 @@ List of properties:
     angular orientation of the nucleus.
 14.1 orientation (regionprops, cell):
     angular orientation of the cell. 
-15. energy (custom):
-    sum of squared intensities (R) of the nucleus.
-16. N_objects (custom, skimage.measure.label):
-    return number of connected objects in the binary image of the nucleus. 
 17. perimeter (regionprops, nucleus):
     perimeter of the nucleus. 
 17.1 perimeter (regionprops, cell):
-    perimeter of the cell. 
-18. euler_number (custom, skimage.measure.euler_number):
-    number of objects minus the number of holes. 
-19. N_holes (custom):
-    N_objects - euler_number
-20. shannon_entropy (custom, skimage.measure.shannon_entropy):
-    Shannon entropy of the intensity (R). 
-21. total_area_of_holes (custom):
-    total area of holes in the binary image of the nucleus. 
+    perimeter of the cell.
 
 Haralick properties:
 1. h0 (haralick):
@@ -106,3 +94,16 @@ Fully custom properties:
     Xth percentile of nucleus intensity (R). 
 6.1. Bq_X (custom, X=[0.02, 0.05, 0.25, 0.5, 0.75, 0.95, 0.98]):
     Xth percentile of nucleus intensity (B). 
+
+15. energy (custom):
+    sum of squared intensities (R) of the nucleus.
+16. N_objects (custom, skimage.measure.label):
+    return number of connected objects in the binary image of the nucleus. 
+18. euler_number (custom, skimage.measure.euler_number):
+    number of objects minus the number of holes. 
+19. N_holes (custom):
+    N_objects - euler_number
+20. shannon_entropy (custom, skimage.measure.shannon_entropy):
+    Shannon entropy of the intensity (R). 
+21. total_area_of_holes (custom):
+    total area of holes in the binary image of the nucleus. 
